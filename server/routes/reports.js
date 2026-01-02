@@ -161,6 +161,133 @@ function addSignatureSection(worksheet, authority, format, schoolName = null) {
   return worksheet;
 }
 
+// Preview a sector report without creating any files or DB records
+// Returns detected header row, headers, school column index, and all data rows
+router.post('/preview', authenticateToken, upload.single('file'), handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { formatId } = req.body;
+    const userId = req.user.userId;
+
+    if (!formatId) {
+      return res.status(400).json({ error: 'Report format is required' });
+    }
+
+    // Load format
+    const format = await ReportFormat.findOne({ _id: formatId, user: userId });
+    if (!format) {
+      return res.status(404).json({ error: 'Report format not found' });
+    }
+    if (!format.is_active) {
+      return res.status(400).json({ error: 'Report format is not active' });
+    }
+
+    // Read the uploaded Excel file
+    let workbook;
+    try {
+      workbook = XLSX.readFile(req.file.path);
+    } catch (error) {
+      console.error('Error reading Excel file in preview:', error);
+      return res.status(500).json({ error: 'Error reading Excel file: ' + error.message });
+    }
+
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+
+    // Read as array of arrays to preserve row structure
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+    // Use headers from the format template (stored in format.structure.headers) if available
+    let formatHeaders = [];
+    if (format.structure && format.structure.headers && Array.isArray(format.structure.headers)) {
+      formatHeaders = format.structure.headers;
+    }
+
+    // Find the header row - look for "S/N" as indicator of data columns
+    let headerRowIndex = -1;
+
+    for (let i = 0; i < Math.min(20, data.length); i++) {
+      const row = data[i] || [];
+      const rowText = row.map(cell => cell ? cell.toString().trim().toLowerCase() : '').join(' ');
+      if (rowText.includes('s/n') || rowText.includes('sn') ||
+          rowText.includes('serial') || rowText.includes('serial number') ||
+          rowText.includes('رقم')) {
+        headerRowIndex = i;
+        break;
+      }
+    }
+
+    // If S/N not found, fall back to first non-empty row
+    if (headerRowIndex === -1) {
+      for (let i = 0; i < Math.min(10, data.length); i++) {
+        const row = data[i] || [];
+        const hasText = row.some(cell => cell && cell.toString().trim().length > 0);
+        if (hasText) {
+          headerRowIndex = i;
+          break;
+        }
+      }
+    }
+
+    // Default to row 0 if still not found
+    if (headerRowIndex === -1) {
+      headerRowIndex = 0;
+    }
+
+    const uploadedHeaders = data[headerRowIndex] || [];
+
+    // Helper to normalize strings
+    const normalizeString = (str) => {
+      if (!str) return '';
+      return str.toString().trim().toLowerCase().replace(/\s+/g, '');
+    };
+
+    // Determine school column index based on format's school_column mapping
+    let schoolColumnIndex = -1;
+    const expectedSchoolColumn = format.column_mappings?.school_column ? normalizeString(format.column_mappings.school_column) : '';
+
+    if (expectedSchoolColumn) {
+      // Try exact match first
+      schoolColumnIndex = uploadedHeaders.findIndex(h => normalizeString(h) === expectedSchoolColumn);
+
+      // Try partial match if exact match fails
+      if (schoolColumnIndex === -1) {
+        schoolColumnIndex = uploadedHeaders.findIndex(h => {
+          const headerNormalized = normalizeString(h);
+          return headerNormalized.includes(expectedSchoolColumn) || expectedSchoolColumn.includes(headerNormalized);
+        });
+      }
+    }
+
+    // Fallback auto-detection if still not found
+    if (schoolColumnIndex === -1) {
+      const schoolKeywords = ['school', 'مدرسة', 'اسم', 'name', 'institution', 'établissement'];
+      schoolColumnIndex = uploadedHeaders.findIndex(h => {
+        const headerNormalized = normalizeString(h);
+        return schoolKeywords.some(keyword => headerNormalized.includes(keyword));
+      });
+    }
+
+    // All rows after the header row are considered data rows for preview
+    const rows = data.slice(headerRowIndex + 1);
+
+    return res.json({
+      sheetName,
+      headerRowIndex,
+      uploadedHeaders,
+      schoolColumnIndex,
+      formatHeaders,
+      rows
+    });
+  } catch (error) {
+    console.error('Error in sector preview:', error);
+    return res.status(500).json({ error: 'Error generating preview: ' + error.message });
+  }
+});
+
 // Upload and process sector report
 router.post('/upload', authenticateToken, upload.single('file'), handleMulterError, async (req, res) => {
   try {
@@ -975,6 +1102,114 @@ router.get('/download-original/:reportId', authenticateToken, async (req, res) =
   } catch (error) {
     console.error('Download error:', error);
     res.status(500).json({ error: 'Error downloading original file' });
+  }
+});
+
+// Generate Excel workbook from manually entered rows
+// Each selected row becomes its own sheet, using the headers from the selected format
+router.post('/generate-from-rows', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { formatId, rows, selectedRowIndices, fileName } = req.body;
+
+    if (!formatId) {
+      return res.status(400).json({ error: 'Report format is required' });
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'Rows array is required and cannot be empty' });
+    }
+
+    if (!Array.isArray(selectedRowIndices) || selectedRowIndices.length === 0) {
+      return res.status(400).json({ error: 'selectedRowIndices array is required and cannot be empty' });
+    }
+
+    // Load format and validate ownership
+    const format = await ReportFormat.findOne({ _id: formatId, user: userId });
+    if (!format) {
+      return res.status(404).json({ error: 'Report format not found' });
+    }
+    if (!format.is_active) {
+      return res.status(400).json({ error: 'Report format is not active' });
+    }
+
+    // Determine headers from format structure
+    let headers = [];
+    if (format.structure && Array.isArray(format.structure.headers)) {
+      headers = format.structure.headers;
+    }
+
+    if (!headers || headers.length === 0) {
+      return res.status(400).json({ error: 'Selected format does not have headers defined in its structure' });
+    }
+
+    // Load authority so we can reuse signature configuration
+    let authority = await Authority.findOne({ user: userId });
+    if (!authority) {
+      authority = new Authority({ user: userId });
+      await authority.save();
+    }
+
+    const workbook = XLSX.utils.book_new();
+
+    // For each selected row index, create a separate sheet
+    selectedRowIndices.forEach((index, idx) => {
+      if (index < 0 || index >= rows.length) {
+        return; // Skip invalid indices
+      }
+
+      const row = rows[index];
+      // Ensure row is an array aligned (or align to headers length)
+      const normalizedRow = Array.isArray(row)
+        ? row.slice(0, headers.length).concat(new Array(Math.max(0, headers.length - row.length)).fill(''))
+        : [];
+
+      const sheetData = [headers, normalizedRow];
+      let worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+
+      // Add signature sections (sector inspector / executive secretary)
+      // We do not pass a school name here since each sheet represents a generic row
+      if (format && format.signature_sections) {
+        worksheet = addSignatureSection(worksheet, authority, format);
+      }
+
+      // Determine sheet name
+      let sheetName = `Row_${index + 1}`;
+      if (row && typeof row[0] === 'string' && row[0].trim().length > 0) {
+        // Optionally use first cell as sheet name, respecting Excel rules
+        sheetName = row[0].toString().substring(0, 31).replace(/[\\\/\?\*\[\]]/g, '_');
+      } else {
+        sheetName = sheetName.substring(0, 31);
+      }
+
+      // Avoid duplicate sheet names by appending index if necessary
+      const existingNames = new Set(workbook.SheetNames);
+      let finalSheetName = sheetName;
+      let counter = 1;
+      while (existingNames.has(finalSheetName)) {
+        const suffix = `_${counter}`;
+        const base = sheetName.substring(0, Math.max(0, 31 - suffix.length));
+        finalSheetName = `${base}${suffix}`;
+        counter++;
+      }
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, finalSheetName);
+    });
+
+    if (workbook.SheetNames.length === 0) {
+      return res.status(400).json({ error: 'No valid rows found for the selected indices' });
+    }
+
+    // Generate Excel file in memory and send as download
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const downloadName = (fileName || 'Manual_Report').replace(/[^a-zA-Z0-9_]/g, '_') + '.xlsx';
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+    return res.send(buffer);
+  } catch (error) {
+    console.error('Error generating manual report from rows:', error);
+    return res.status(500).json({ error: 'Error generating report from rows: ' + error.message });
   }
 });
 

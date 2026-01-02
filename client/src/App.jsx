@@ -11,6 +11,7 @@ import UploadReport from './pages/UploadReport';
 import ManageFormats from './pages/ManageFormats';
 import ManageAuthorities from './pages/ManageAuthorities';
 import ManageSchoolLists from './pages/ManageSchoolLists';
+import ManualReport from './pages/ManualReport';
 import './App.css';
 
 function App() {
@@ -67,6 +68,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <ManageSchoolLists />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/manual-report"
+              element={
+                <PrivateRoute>
+                  <ManualReport />
                 </PrivateRoute>
               }
             />

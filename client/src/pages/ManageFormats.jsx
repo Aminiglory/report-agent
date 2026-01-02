@@ -21,6 +21,9 @@ const ManageFormats = () => {
   });
   const [templateHeaders, setTemplateHeaders] = useState([]);
   const [loadingHeaders, setLoadingHeaders] = useState(false);
+  const [templatePreview, setTemplatePreview] = useState([]);
+  const [headerRowIndex, setHeaderRowIndex] = useState(null);
+  const [selectedSchoolColumnIndex, setSelectedSchoolColumnIndex] = useState(null);
 
   useEffect(() => {
     fetchFormats();
@@ -102,6 +105,9 @@ const ManageFormats = () => {
     if (format.structure?.headers) {
       setTemplateHeaders(format.structure.headers.filter(h => h && h.length > 0));
     }
+    setTemplatePreview([]);
+    setHeaderRowIndex(null);
+    setSelectedSchoolColumnIndex(null);
     setShowCreateForm(true);
   };
 
@@ -182,6 +188,9 @@ const ManageFormats = () => {
                   onChange={async (e) => {
                     const file = e.target.files[0] || null;
                     setFormData({ ...formData, template: file });
+                    setTemplatePreview([]);
+                    setHeaderRowIndex(null);
+                    setSelectedSchoolColumnIndex(null);
                     
                     // Extract headers from the uploaded file
                     if (file) {
@@ -225,6 +234,8 @@ const ManageFormats = () => {
                         }
                         
                         setTemplateHeaders(headers.filter(h => h && h.length > 0));
+                        setTemplatePreview(data.slice(0, Math.min(6, data.length)));
+                        setHeaderRowIndex(headerRowIndex >= 0 ? headerRowIndex : null);
                         
                         // Auto-select school column if it looks like a school column
                         if (headers.length > 0 && !formData.school_column) {
@@ -238,17 +249,27 @@ const ManageFormats = () => {
                           });
                           if (found) {
                             setFormData(prev => ({ ...prev, school_column: found }));
+                            const foundIndex = headers.findIndex(h => h === found);
+                            if (foundIndex !== -1) {
+                              setSelectedSchoolColumnIndex(foundIndex);
+                            }
                           }
                         }
                       } catch (error) {
                         console.error('Error reading template file:', error);
                         showError('Error reading template file. Please make sure it\'s a valid Excel file.');
                         setTemplateHeaders([]);
+                        setTemplatePreview([]);
+                        setHeaderRowIndex(null);
+                        setSelectedSchoolColumnIndex(null);
                       } finally {
                         setLoadingHeaders(false);
                       }
                     } else {
                       setTemplateHeaders([]);
+                      setTemplatePreview([]);
+                      setHeaderRowIndex(null);
+                      setSelectedSchoolColumnIndex(null);
                     }
                   }}
                   required={!editingFormat}
@@ -328,6 +349,48 @@ const ManageFormats = () => {
                   </small>
                 )}
               </div>
+              {templatePreview.length > 0 && (
+                <div className="template-preview">
+                  <p className="preview-title">Template preview (click a header cell to select the School column)</p>
+                  <div className="template-preview-table-wrapper">
+                    <table>
+                      <tbody>
+                        {templatePreview.map((row, rowIndex) => (
+                          <tr
+                            key={rowIndex}
+                            className={headerRowIndex !== null && rowIndex === headerRowIndex ? 'preview-header-row' : ''}
+                          >
+                            {row.map((cell, colIndex) => {
+                              const isHeader = headerRowIndex !== null && rowIndex === headerRowIndex;
+                              const isSelectedCol = isHeader && selectedSchoolColumnIndex === colIndex;
+                              const className = [
+                                isHeader ? 'preview-header-cell' : '',
+                                isSelectedCol ? 'preview-school-col' : ''
+                              ].join(' ').trim();
+                              const handleClick = () => {
+                                if (isHeader) {
+                                  const value = cell ? cell.toString().trim() : '';
+                                  setFormData(prev => ({ ...prev, school_column: value }));
+                                  setSelectedSchoolColumnIndex(colIndex);
+                                }
+                              };
+                              return (
+                                <td
+                                  key={colIndex}
+                                  className={className}
+                                  onClick={handleClick}
+                                >
+                                  {cell}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               <div className="form-actions">
                 <button type="submit" className="submit-button">
                   {editingFormat ? 'Update Format' : 'Create Format'}

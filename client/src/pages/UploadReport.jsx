@@ -18,6 +18,9 @@ const UploadReport = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [reportData, setReportData] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewSelectedRows, setPreviewSelectedRows] = useState([]);
   const { modal, showSuccess, showError, closeModal } = useModal();
 
   useEffect(() => {
@@ -115,6 +118,163 @@ const UploadReport = () => {
       const errorMessage = err.response?.data?.error || err.message || 'Error uploading file. Please try again.';
       setError(errorMessage);
       showError(`Upload failed: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePreview = async () => {
+    setError('');
+    setSuccess(false);
+    setReportData(null);
+    setPreviewData(null);
+    setPreviewSelectedRows([]);
+
+    if (!file) {
+      setError('Please select a file');
+      return;
+    }
+
+    if (!formatId) {
+      setError('Please select a report format');
+      return;
+    }
+
+    setPreviewLoading(true);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('formatId', formatId);
+
+    try {
+      const response = await axios.post('/api/reports/preview', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      const data = response.data || {};
+      setPreviewData(data);
+
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      const nonEmptyIndices = rows
+        .map((row, index) => ({ row, index }))
+        .filter(({ row }) => row.some(cell => cell && cell.toString().trim().length > 0))
+        .map(({ index }) => index);
+
+      setPreviewSelectedRows(nonEmptyIndices);
+    } catch (err) {
+      console.error('Preview error:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Error generating preview. Please try again.';
+      setError(errorMessage);
+      showError(`Preview failed: ${errorMessage}`);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const togglePreviewRow = (rowIndex) => {
+    setPreviewSelectedRows(prev => (
+      prev.includes(rowIndex)
+        ? prev.filter(i => i !== rowIndex)
+        : [...prev, rowIndex]
+    ));
+  };
+
+  const handlePreviewSelectAll = (checked) => {
+    if (!previewData || !Array.isArray(previewData.rows)) {
+      setPreviewSelectedRows([]);
+      return;
+    }
+    if (checked) {
+      const allIndices = previewData.rows.map((_, index) => index);
+      setPreviewSelectedRows(allIndices);
+    } else {
+      setPreviewSelectedRows([]);
+    }
+  };
+
+  const handleGenerateFromPreview = async () => {
+    if (!previewData) {
+      setError('No preview data available. Please generate a preview first.');
+      return;
+    }
+
+    if (!formatId) {
+      setError('Please select a report format');
+      return;
+    }
+
+    if (!Array.isArray(previewSelectedRows) || previewSelectedRows.length === 0) {
+      setError('Please select at least one row in the preview');
+      return;
+    }
+
+    const { uploadedHeaders = [], formatHeaders = [], rows = [] } = previewData;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      setError('Preview has no rows to generate from');
+      return;
+    }
+
+    const targetHeaders = (Array.isArray(formatHeaders) && formatHeaders.length > 0)
+      ? formatHeaders
+      : uploadedHeaders;
+
+    if (!targetHeaders || targetHeaders.length === 0) {
+      setError('No headers available from the selected format');
+      return;
+    }
+
+    const normalize = (str) => {
+      if (!str) return '';
+      return str.toString().trim().toLowerCase().replace(/\s+/g, '');
+    };
+
+    const headerMap = new Map();
+    uploadedHeaders.forEach((header, idx) => {
+      const n = normalize(header);
+      if (!n) return;
+      const targetIndex = targetHeaders.findIndex(h => normalize(h) === n);
+      if (targetIndex !== -1) {
+        headerMap.set(idx, targetIndex);
+      }
+    });
+
+    const mappedRows = rows.map(row => {
+      const out = new Array(targetHeaders.length).fill('');
+      (row || []).forEach((cell, idx) => {
+        const targetIndex = headerMap.get(idx);
+        if (targetIndex !== undefined && targetIndex < out.length) {
+          out[targetIndex] = cell;
+        }
+      });
+      return out;
+    });
+
+    try {
+      setLoading(true);
+      const response = await axios.post(
+        '/api/reports/generate-from-rows',
+        {
+          formatId,
+          rows: mappedRows,
+          selectedRowIndices: previewSelectedRows,
+          fileName: `Sector_Selected_Rows_${month || 'Month'}_${year || new Date().getFullYear()}`
+        },
+        {
+          responseType: 'blob'
+        }
+      );
+
+      const suggestedName = `Sector_Selected_Rows_${month || 'Month'}_${year || new Date().getFullYear()}.xlsx`;
+      saveAs(response.data, suggestedName.replace(/[^a-zA-Z0-9_.-]/g, '_'));
+      showSuccess('Excel generated from selected rows');
+    } catch (err) {
+      console.error('Error generating from preview rows:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Error generating report from selected rows.';
+      setError(errorMessage);
+      showError(`Generation failed: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -274,6 +434,15 @@ const UploadReport = () => {
             <button type="submit" className="upload-button" disabled={loading}>
               {loading ? 'Processing...' : 'Upload & Process Report'}
             </button>
+            <button
+              type="button"
+              className="upload-button secondary"
+              disabled={previewLoading || !file || !formatId}
+              onClick={handlePreview}
+              style={{ marginLeft: '0.75rem' }}
+            >
+              {previewLoading ? 'Generating Preview...' : 'Preview & Select Rows'}
+            </button>
           </form>
 
           {reportData && reportData.schools && reportData.schools.length > 0 && (
@@ -312,6 +481,81 @@ const UploadReport = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {previewData && (
+            <div className="preview-section">
+              <h3>Sector Report Preview (Select Rows)</h3>
+              <p className="preview-subtitle">
+                Header row and school column are auto-detected. Adjust row selection below, then generate an Excel where each selected row becomes its own sheet.
+              </p>
+              <div className="preview-table-wrapper">
+                <table className="preview-table">
+                  <thead>
+                    <tr>
+                      <th style={{ whiteSpace: 'nowrap' }}>
+                        <input
+                          type="checkbox"
+                          checked={
+                            Array.isArray(previewData.rows) &&
+                            previewData.rows.length > 0 &&
+                            previewSelectedRows.length === previewData.rows.length
+                          }
+                          onChange={(e) => handlePreviewSelectAll(e.target.checked)}
+                        />
+                        {' '}Select All
+                      </th>
+                      {(previewData.uploadedHeaders || []).map((header, idx) => (
+                        <th
+                          key={idx}
+                          style={{
+                            backgroundColor: (previewData.schoolColumnIndex === idx) ? '#fee2e2' : '#eff6ff',
+                            fontWeight: '600'
+                          }}
+                        >
+                          {header}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(previewData.rows || []).map((row, rowIndex) => (
+                      <tr key={rowIndex}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={previewSelectedRows.includes(rowIndex)}
+                            onChange={() => togglePreviewRow(rowIndex)}
+                          />
+                        </td>
+                        {(row || []).map((cell, colIndex) => (
+                          <td key={colIndex}>
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                    {(!previewData.rows || previewData.rows.length === 0) && (
+                      <tr>
+                        <td colSpan={(previewData.uploadedHeaders || []).length + 1} style={{ textAlign: 'center', padding: '1rem' }}>
+                          No data rows found in this sheet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: '1rem', textAlign: 'right' }}>
+                <button
+                  type="button"
+                  className="upload-button"
+                  disabled={loading || !previewSelectedRows.length}
+                  onClick={handleGenerateFromPreview}
+                >
+                  {loading ? 'Generating from Selected Rows...' : 'Generate Excel from Selected Rows'}
+                </button>
               </div>
             </div>
           )}
