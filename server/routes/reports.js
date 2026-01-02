@@ -330,7 +330,7 @@ router.post('/upload', authenticateToken, upload.single('file'), handleMulterErr
       let value = normalizeStringWithSpaces(str);
       // Remove common school-type words (prefixes/suffixes) in multiple languages
       const removableWords = [
-        'gs', 'g.s', 'ecole', 'école', 'school', 'primary', 'secondary', 'tvet',
+        'gs', 'g.s', 'cs', 'ecole', 'école', 'school', 'primary', 'secondary', 'tvet',
         'ps', 'ss', 'lycee', 'lycée', 'college', 'collège', 'ecole primaire',
         'école primaire', 'tss', 'ess'
       ];
