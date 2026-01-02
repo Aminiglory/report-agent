@@ -448,13 +448,6 @@ router.post('/upload', authenticateToken, upload.single('file'), handleMulterErr
         return true;
       }
       
-      // Check if it's all uppercase and very short (likely a header like "SECTOR", "TOTAL")
-      // But ONLY if it doesn't contain school indicators
-      if (!hasSchoolIndicator && schoolName === schoolName.toUpperCase() && 
-          schoolName.length < 15 && schoolName.split(' ').length <= 2) {
-        return true;
-      }
-      
       // Check if it's just numbers or mostly numbers
       if (/^\d+$/.test(schoolName.trim()) || /^\d+\s*[-–]\s*\d+$/.test(schoolName.trim())) {
         return true;
@@ -501,7 +494,20 @@ router.post('/upload', authenticateToken, upload.single('file'), handleMulterErr
         console.log(`  - Matches header: ${schoolNameMatchesHeader}`);
         console.log(`  - Is summary row: ${isSummary}`);
         
-        if (!schoolNameMatchesHeader && !isSummary) {
+        if (schoolNameMatchesHeader) {
+          console.log(`  ❌ REJECTED - matches a header`);
+          // Header rows should break the current school context
+          currentSchool = null;
+        } else if (isSummary) {
+          // Summary row: do NOT start a new school, but if we already
+          // have a current school, keep the row inside that school's data
+          if (currentSchool) {
+            console.log(`  ➕ ADDING summary row to current school "${currentSchool}"`);
+            schoolsData[currentSchool].push(row);
+          } else {
+            console.log(`  ❌ SUMMARY ROW with no current school, skipping`);
+          }
+        } else {
           // This is a new school name - start a new school group
           // Use normalized name as key for case-insensitive matching
           // But preserve original name for display
@@ -521,14 +527,6 @@ router.post('/upload', authenticateToken, upload.single('file'), handleMulterErr
           }
           // Include the row with the school name as the first data row
           schoolsData[currentSchool].push(row);
-        } else {
-          if (schoolNameMatchesHeader) {
-            console.log(`  ❌ REJECTED - matches a header`);
-          } else if (isSummary) {
-            console.log(`  ❌ REJECTED - is a summary/header row`);
-          }
-          // Reset current school when we hit a summary/header row
-          currentSchool = null;
         }
       } else if (currentSchool) {
         // This row doesn't have a school name, so it's data for the current school
