@@ -1,0 +1,246 @@
+.manage-formats {
+  min-height: calc(100vh - 80px);
+  padding: 2rem 0;
+}
+
+.page-header {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: #1e40af;
+}
+
+.page-header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.page-header p {
+  font-size: 1.1rem;
+  color: #3b82f6;
+  margin-bottom: 1rem;
+}
+
+.create-button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 0.875rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.create-button:hover {
+  background: #1e40af;
+}
+
+.create-form-card {
+  background: white;
+  border-radius: 15px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.create-form-card h2 {
+  color: #333;
+  margin-bottom: 1.5rem;
+}
+
+.create-form-card .form-group {
+  margin-bottom: 1.5rem;
+}
+
+.create-form-card label {
+  display: block;
+  color: #333;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.create-form-card input,
+.create-form-card textarea,
+.create-form-card select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.create-form-card select.column-select {
+  margin-bottom: 0.5rem;
+}
+
+.create-form-card input.mt-1 {
+  margin-top: 0.5rem;
+}
+
+.create-form-card input:focus,
+.create-form-card textarea:focus,
+.create-form-card select:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.create-form-card small {
+  display: block;
+  color: #666;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.submit-button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.submit-button:hover {
+  background: #1e40af;
+}
+
+.cancel-button {
+  background: #e0e0e0;
+  color: #333;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.formats-list {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.format-card {
+  background: white;
+  border-radius: 15px;
+  padding: 1.5rem;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+.format-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.format-header h3 {
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.format-description {
+  color: #666;
+  margin-bottom: 0.5rem;
+}
+
+.format-meta {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status-badge.active {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge.inactive {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.format-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.format-actions button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.edit-button {
+  background: #2563eb;
+  color: white;
+}
+
+.edit-button:hover {
+  background: #1e40af;
+}
+
+.activate-button {
+  background: #28a745;
+  color: white;
+}
+
+.deactivate-button {
+  background: #ffc107;
+  color: #333;
+}
+
+.delete-button {
+  background: #dc3545;
+  color: white;
+}
+
+.loading,
+.empty-state {
+  background: white;
+  border-radius: 15px;
+  padding: 3rem;
+  text-align: center;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+.empty-state p {
+  color: #666;
+  font-size: 1.1rem;
+}
+
+@media (max-width: 768px) {
+  .format-header {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .format-actions {
+    width: 100%;
+  }
+
+  .format-actions button {
+    flex: 1;
+  }
+}
+
