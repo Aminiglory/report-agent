@@ -21,6 +21,7 @@ const UploadReport = () => {
   const [previewData, setPreviewData] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewSelectedRows, setPreviewSelectedRows] = useState([]);
+  const [previewSchoolColumnIndex, setPreviewSchoolColumnIndex] = useState(null);
   const { modal, showSuccess, showError, closeModal } = useModal();
 
   useEffect(() => {
@@ -129,6 +130,7 @@ const UploadReport = () => {
     setReportData(null);
     setPreviewData(null);
     setPreviewSelectedRows([]);
+    setPreviewSchoolColumnIndex(null);
 
     if (!file) {
       setError('Please select a file');
@@ -163,6 +165,11 @@ const UploadReport = () => {
         .map(({ index }) => index);
 
       setPreviewSelectedRows(nonEmptyIndices);
+      if (typeof data.schoolColumnIndex === 'number' && data.schoolColumnIndex >= 0) {
+        setPreviewSchoolColumnIndex(data.schoolColumnIndex);
+      } else {
+        setPreviewSchoolColumnIndex(null);
+      }
     } catch (err) {
       console.error('Preview error:', err);
       const errorMessage = err.response?.data?.error || err.message || 'Error generating preview. Please try again.';
@@ -510,10 +517,12 @@ const UploadReport = () => {
                       {(previewData.uploadedHeaders || []).map((header, idx) => (
                         <th
                           key={idx}
-                          style={{
-                            backgroundColor: (previewData.schoolColumnIndex === idx) ? '#fee2e2' : '#eff6ff',
-                            fontWeight: '600'
-                          }}
+                          className={[
+                            'preview-header-cell',
+                            previewSchoolColumnIndex === idx ? 'preview-school-col' : ''
+                          ].join(' ').trim()}
+                          onClick={() => setPreviewSchoolColumnIndex(idx)}
+                          title="Click to mark this column as the School name column (visual only)"
                         >
                           {header}
                         </th>

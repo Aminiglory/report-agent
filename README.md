@@ -1,4 +1,4 @@
-# Report Agent
+# Summary
 
 A React-based application for processing sector reports and generating individual Excel sheets for each school.
 

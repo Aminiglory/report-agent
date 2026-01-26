@@ -233,8 +233,9 @@ const ManageFormats = () => {
                           }
                         }
                         
+                        // Use all rows from the sheet in the preview so the user can see the full template
                         setTemplateHeaders(headers.filter(h => h && h.length > 0));
-                        setTemplatePreview(data.slice(0, Math.min(6, data.length)));
+                        setTemplatePreview(data);
                         setHeaderRowIndex(headerRowIndex >= 0 ? headerRowIndex : null);
                         
                         // Auto-select school column if it looks like a school column

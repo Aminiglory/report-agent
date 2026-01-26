@@ -215,6 +215,80 @@
   background: #2563eb;
 }
 
+/* Preview & Select Rows section */
+.preview-section {
+  margin-top: 2rem;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+}
+
+.preview-subtitle {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.preview-table-wrapper {
+  max-height: 420px;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.preview-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.preview-table th,
+.preview-table td {
+  border-bottom: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  padding: 0.4rem 0.6rem;
+  background: #ffffff;
+}
+
+.preview-table th:first-child,
+.preview-table td:first-child {
+  position: sticky;
+  left: 0;
+  background: #f9fafb;
+  z-index: 2;
+}
+
+.preview-header-cell {
+  background: #eff6ff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.preview-header-cell:hover {
+  background: #dbeafe;
+}
+
+.preview-school-col {
+  background: #fee2e2 !important;
+  color: #991b1b;
+}
+
+.preview-table tbody tr:nth-child(odd) td {
+  background: #f9fafb;
+}
+
+.preview-table tbody tr:hover td {
+  background: #e5f0ff;
+}
+
 @media (max-width: 768px) {
   .upload-card {
     padding: 1.5rem;

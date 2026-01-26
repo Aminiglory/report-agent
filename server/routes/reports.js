@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import fs from 'fs';
 import { authenticateToken } from '../middleware/auth.js';
 import Report from '../models/Report.js';
@@ -1143,65 +1144,92 @@ router.post('/generate-from-rows', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Selected format does not have headers defined in its structure' });
     }
 
-    // Load authority so we can reuse signature configuration
-    let authority = await Authority.findOne({ user: userId });
-    if (!authority) {
-      authority = new Authority({ user: userId });
-      await authority.save();
+    // Load the template workbook using exceljs so we can preserve layout and formulas
+    if (!format.template_file_path) {
+      return res.status(400).json({ error: 'Selected format does not have a template file associated with it' });
     }
 
-    const workbook = XLSX.utils.book_new();
+    const templateWorkbook = new ExcelJS.Workbook();
+    try {
+      await templateWorkbook.xlsx.readFile(format.template_file_path);
+    } catch (err) {
+      console.error('Error reading template workbook for generate-from-rows:', err);
+      return res.status(500).json({ error: 'Error reading template file for this format' });
+    }
 
-    // For each selected row index, create a separate sheet
-    selectedRowIndices.forEach((index, idx) => {
+    const baseSheet = templateWorkbook.worksheets[0];
+    if (!baseSheet) {
+      return res.status(400).json({ error: 'Template workbook has no worksheets' });
+    }
+
+    // Determine the header row in the template sheet
+    const headerRowIndex = typeof format.structure?.header_row_index === 'number'
+      ? format.structure.header_row_index
+      : 0; // 0-based index
+    const dataRowNumber = (headerRowIndex + 2); // exceljs rows are 1-based
+
+    // Create an output workbook that will contain one sheet per selected row
+    const outputWorkbook = new ExcelJS.Workbook();
+
+    // Helper to deep-clone a worksheet model
+    const cloneSheetToWorkbook = (sourceSheet, workbook, newName) => {
+      const newSheet = workbook.addWorksheet(newName || sourceSheet.name);
+      // Clone basic model (rows, columns, merges, styles, etc.)
+      newSheet.model = JSON.parse(JSON.stringify(sourceSheet.model));
+      newSheet.name = newName || sourceSheet.name;
+      return newSheet;
+    };
+
+    // For each selected row index, create a separate sheet based on the template
+    let createdSheets = 0;
+    for (const index of selectedRowIndices) {
       if (index < 0 || index >= rows.length) {
-        return; // Skip invalid indices
+        continue; // Skip invalid indices
       }
 
       const row = rows[index];
       // Ensure row is an array aligned (or align to headers length)
       const normalizedRow = Array.isArray(row)
         ? row.slice(0, headers.length).concat(new Array(Math.max(0, headers.length - row.length)).fill(''))
-        : [];
-
-      const sheetData = [headers, normalizedRow];
-      let worksheet = XLSX.utils.aoa_to_sheet(sheetData);
-
-      // Add signature sections (sector inspector / executive secretary)
-      // We do not pass a school name here since each sheet represents a generic row
-      if (format && format.signature_sections) {
-        worksheet = addSignatureSection(worksheet, authority, format);
-      }
+        : new Array(headers.length).fill('');
 
       // Determine sheet name
       let sheetName = `Row_${index + 1}`;
       if (row && typeof row[0] === 'string' && row[0].trim().length > 0) {
-        // Optionally use first cell as sheet name, respecting Excel rules
         sheetName = row[0].toString().substring(0, 31).replace(/[\\\/\?\*\[\]]/g, '_');
       } else {
         sheetName = sheetName.substring(0, 31);
       }
 
-      // Avoid duplicate sheet names by appending index if necessary
-      const existingNames = new Set(workbook.SheetNames);
+      // Avoid duplicate sheet names
       let finalSheetName = sheetName;
       let counter = 1;
-      while (existingNames.has(finalSheetName)) {
+      while (outputWorkbook.getWorksheet(finalSheetName)) {
         const suffix = `_${counter}`;
         const base = sheetName.substring(0, Math.max(0, 31 - suffix.length));
         finalSheetName = `${base}${suffix}`;
         counter++;
       }
 
-      XLSX.utils.book_append_sheet(workbook, worksheet, finalSheetName);
-    });
+      // Clone the template sheet into the output workbook
+      const newSheet = cloneSheetToWorkbook(baseSheet, outputWorkbook, finalSheetName);
 
-    if (workbook.SheetNames.length === 0) {
+      // Write the data row under the header row across all header columns
+      const targetRow = newSheet.getRow(dataRowNumber);
+      for (let colIndex = 0; colIndex < headers.length; colIndex++) {
+        const cell = targetRow.getCell(colIndex + 1);
+        cell.value = normalizedRow[colIndex] ?? '';
+      }
+      targetRow.commit();
+      createdSheets++;
+    }
+
+    if (createdSheets === 0) {
       return res.status(400).json({ error: 'No valid rows found for the selected indices' });
     }
 
-    // Generate Excel file in memory and send as download
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    // Generate Excel file in memory and send as download using exceljs
+    const buffer = await outputWorkbook.xlsx.writeBuffer();
     const downloadName = (fileName || 'Manual_Report').replace(/[^a-zA-Z0-9_]/g, '_') + '.xlsx';
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
